@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Panel - Zebra Crossing Configuration</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/konva@8.3.14/konva.min.js"></script>
+    <style>
+        #canvas-container {
+            position: relative;
+            margin: 0 auto;
+            border: 1px solid #ccc;
+            background-color: #000;
+        }
+        .debug-container {
+            font-family: monospace;
+            font-size: 0.8rem;
+            background: #f0f0f0;
+            padding: 0.5rem;
+            border-radius: 0.25rem;
+            white-space: pre-wrap;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .control-panel {
+            position: sticky;
+            top: 1rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <header class="bg-gray-800 text-white p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold">Admin Panel</h1>
+                <nav class="mt-2 flex space-x-4">
+                    <a href="{{ url_for('index') }}" class="text-white hover:text-gray-300">Home</a>
+                    <a href="{{ url_for('admin_panel') }}" class="text-white hover:text-gray-300 underline">Admin Panel</a>
+                    <a href="{{ url_for('zebra_crossing_analytics') }}" class="text-white hover:text-gray-300">Analytics</a>
+                </nav>
+            </div>
+            <a href="{{ url_for('logout') }}" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded">
+                Logout
+            </a>
+        </div>
+    </header>
+
+    <main class="container mx-auto py-6">
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <!-- Control Panel -->
+            <div class="lg:col-span-1">
+                <div class="bg-white p-4 rounded-lg shadow control-panel">
+                    <h2 class="text-xl font-bold mb-4">Zebra Crossing Configuration</h2>
+
+                    <div class="mb-4">
+                        <label for="camera-select" class="block text-sm font-medium text-gray-700 mb-1">
+                            Select Camera
+                        </label>
+                        <select id="camera-select" class="w-full rounded-md border-gray-300 shadow-sm p-2">
+                            <option value="cam1">Camera 1</option>
+                            <option value="cam2">Camera 2</option>
+                            <option value="cam3">Camera 3</option>
+                            <option value="cam4">Camera 4</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-4">
+                        <button id="load-camera" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded w-full">
+                            Load Camera
+                        </button>
+                    </div>
+
+                    <div class="mb-4">
+                        <button id="enable-drawing" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded w-full">
+                            Enable Drawing
+                        </button>
+                    </div>
+
+                    <div class="mb-4">
+                        <p class="text-sm text-gray-600 mb-2">
+                            Click on the image to define the zebra crossing line. Add exactly 2 points for the line.
+                        </p>
+                    </div>
+
+                    <div class="mb-4">
+                        <button id="clear-drawing" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded w-full">
+                            Clear Drawing
+                        </button>
+                    </div>
+
+                    <div class="mb-4">
+                        <button id="save-regions" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded w-full" disabled>
+                            Save Zebra Line
+                        </button>
+                    </div>
+
+                    <div class="mt-6">
+                        <h3 class="font-bold mb-2">Status</h3>
+                        <div id="status" class="text-sm p-2 bg-gray-100 rounded">
+                            Waiting for action...
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Canvas Area -->
+            <div class="lg:col-span-3">
+                <div class="bg-white p-4 rounded-lg shadow">
+                    <div id="canvas-container" style="width: 100%; height: 540px;">
+                        <!-- Canvas will be inserted here -->
+                    </div>
+
+                    <div class="mt-4">
+                        <div class="flex space-x-2">
+                            <div class="flex items-center">
+                                <span class="inline-block w-3 h-3 bg-blue-500 rounded-full mr-1"></span>
+                                <span class="text-sm">Zebra Line Point</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Debug info -->
+                    <div class="mt-4">
+                        <details>
+                            <summary class="cursor-pointer font-medium mb-2">Debug Information</summary>
+                            <div id="debug-info" class="debug-container">No debug info available</div>
+                        </details>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Configuration and state
+        const isDebugMode = true;
+        let currentCamera = 'cam1';
+        let points = [];
+        let isDrawingEnabled = false;
+        let isCanvasReady = false;
+        let stage, layer, backgroundImage;
+
+        // Initialize Konva stage
+        function initializeCanvas() {
+            const canvasContainer = document.getElementById('canvas-container');
+
+            // Create stage
+            stage = new Konva.Stage({
+                container: 'canvas-container',
+                width: canvasContainer.clientWidth,
+                height: canvasContainer.clientHeight
+            });
+
+            // Create layer
+            layer = new Konva.Layer();
+            stage.add(layer);
+
+            // Update status
+            setStatus('Canvas initialized. Please load a camera feed.');
+        }
+
+        // Set status message
+        function setStatus(message, isError = false) {
+            const statusElement = document.getElementById('status');
+            statusElement.textContent = message;
+            statusElement.className = isError
+                ? 'text-sm p-2 bg-red-100 text-red-800 rounded'
+                : 'text-sm p-2 bg-gray-100 rounded';
+
+            if (isDebugMode) {
+                console.log(`Status: ${message}`);
+            }
+        }
+
+        // Update debug information
+        function updateDebugInfo() {
+            if (!isDebugMode) return;
+
+            const debugInfo = {
+                camera: currentCamera,
+                points: points,
+                isDrawingEnabled,
+                isCanvasReady,
+                timestamp: new Date().toISOString()
+            };
+
+            document.getElementById('debug-info').textContent = JSON.stringify(debugInfo, null, 2);
+        }
+
+        // Load camera frame
+        async function loadCameraFrame(camera) {
+            try {
+                setStatus(`Loading camera ${camera} feed...`);
+
+                const response = await fetch(`/get_frame/${camera}`);
+                const data = await response.json();
+
+                if (data.status !== 'success') {
+                    throw new Error(data.message || 'Failed to load camera frame');
+                }
+
+                // Create and load image
+                const imageObj = new Image();
+                imageObj.crossOrigin = 'Anonymous';
+                imageObj.src = data.frame_url + '?t=' + new Date().getTime();
+
+                return new Promise((resolve, reject) => {
+                    imageObj.onload = function() {
+                        // Clear previous content
+                        layer.destroyChildren();
+
+                        // Adjust stage size if needed
+                        const containerWidth = stage.width();
+                        const containerHeight = stage.height();
+                        const imgRatio = imageObj.width / imageObj.height;
+
+                        let imgWidth, imgHeight;
+
+                        if (containerWidth / containerHeight > imgRatio) {
+                            imgHeight = containerHeight;
+                            imgWidth = imgHeight * imgRatio;
+                        } else {
+                            imgWidth = containerWidth;
+                            imgHeight = imgWidth / imgRatio;
+                        }
+
+                        // Create background image
+                        backgroundImage = new Konva.Image({
+                            x: 0,
+                            y: 0,
+                            image: imageObj,
+                            width: imgWidth,
+                            height: imgHeight,
+                        });
+
+                        layer.add(backgroundImage);
+                        layer.draw();
+
+                        isCanvasReady = true;
+                        setStatus(`Camera ${camera} feed loaded successfully.`);
+                        resolve();
+                    };
+
+                    imageObj.onerror = function() {
+                        isCanvasReady = false;
+                        setStatus('Failed to load camera image.', true);
+                        reject(new Error('Image load error'));
+                    };
+                });
+            } catch (error) {
+                isCanvasReady = false;
+                setStatus(`Error loading camera frame: ${error.message}`, true);
+                throw error;
+            }
+        }
+
+        // Load existing regions
+        async function loadExistingRegions() {
+            try {
+                setStatus('Loading existing regions...');
+
+                const response = await fetch('/get_regions');
+                const data = await response.json();
+
+                if (data[currentCamera] && data[currentCamera].Zebra) {
+                    const zebraRegion = data[currentCamera].Zebra;
+
+                    // Clear existing points
+                    points = [];
+
+                    // Add vertices to points
+                    if (zebraRegion.vertices && zebraRegion.vertices.length >= 2) {
+                        points.push(zebraRegion.vertices[0]);
+                        points.push(zebraRegion.vertices[1]);
+
+                        // Draw line
+                        const line = new Konva.Line({
+                            points: zebraRegion.vertices.flat(),
+                            stroke: 'blue',
+                            strokeWidth: 3
+                        });
+                        layer.add(line);
+
+                        // Draw endpoints
+                        zebraRegion.vertices.forEach(point => {
+                            const circle = new Konva.Circle({
+                                x: point[0],
+                                y: point[1],
+                                radius: 5,
+                                fill: 'blue',
+                            });
+                            layer.add(circle);
+                        });
+
+                        layer.draw();
+                        setStatus('Existing zebra crossing line loaded.');
+                    } else {
+                        setStatus('No valid zebra crossing line found.');
+                    }
+                } else {
+                    setStatus('No zebra crossing line defined for this camera.');
+                }
+
+                updateDebugInfo();
+            } catch (error) {
+                setStatus(`Error loading regions: ${error.message}`, true);
+            }
+        }
+
+        // Save regions
+        async function saveRegions() {
+            try {
+                if (points.length !== 2) {
+                    setStatus('Please define exactly 2 points for the zebra crossing line.', true);
+                    return;
+                }
+
+                setStatus('Saving zebra crossing line...');
+
+                const regions = [
+                    {
+                        type: 'Zebra',
+                        vertices: points,
+                        color: 'blue'
+                    }
+                ];
+
+                const response = await fetch('/update_regions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        cam_id: currentCamera,
+                        regions: regions
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    setStatus('Zebra crossing line saved successfully.');
+                } else {
+                    throw new Error(data.message || 'Failed to save regions');
+                }
+            } catch (error) {
+                setStatus(`Error saving regions: ${error.message}`, true);
+            }
+        }
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeCanvas();
+            updateDebugInfo();
+
+            // Enable drawing button
+            document.getElementById('enable-drawing').addEventListener('click', function() {
+                if (!isCanvasReady) {
+                    setStatus('Please load a camera feed first.', true);
+                    return;
+                }
+
+                isDrawingEnabled = !isDrawingEnabled;
+                if (isDrawingEnabled) {
+                    this.textContent = 'Disable Drawing';
+                    this.classList.remove('bg-green-500', 'hover:bg-green-600');
+                    this.classList.add('bg-red-500', 'hover:bg-red-600');
+                    setStatus('Drawing mode enabled. Click on the image to add points.');
+                } else {
+                    this.textContent = 'Enable Drawing';
+                    this.classList.remove('bg-red-500', 'hover:bg-red-600');
+                    this.classList.add('bg-green-500', 'hover:bg-green-600');
+                    setStatus('Drawing mode disabled.');
+                }
+                updateDebugInfo();
+            });
+
+            // Clear drawing button
+            document.getElementById('clear-drawing').addEventListener('click', function() {
+                points = [];
+                layer.destroyChildren();
+                if (backgroundImage) {
+                    layer.add(backgroundImage);
+                }
+                layer.draw();
+                document.getElementById('save-regions').disabled = true;
+                setStatus('Drawings cleared.');
+                updateDebugInfo();
+            });
+
+            // Save regions button
+            document.getElementById('save-regions').addEventListener('click', function() {
+                saveRegions();
+            });
+
+            // Load camera button
+            document.getElementById('load-camera').addEventListener('click', function() {
+                currentCamera = document.getElementById('camera-select').value;
+                loadCameraFrame(currentCamera)
+                    .then(() => loadExistingRegions())
+                    .catch(error => {
+                        setStatus(`Failed to fully initialize: ${error.message}`, true);
+                    });
+                updateDebugInfo();
+            });
+
+            // Handle drawing clicks
+            stage.on('click', function(e) {
+                if (!isCanvasReady || !isDrawingEnabled) {
+                    return;
+                }
+
+                const pos = stage.getPointerPosition();
+                if (!pos) {
+                    console.error("Could not get pointer position");
+                    return;
+                }
+
+                // Round coordinates for precision
+                const x = Math.round(pos.x);
+                const y = Math.round(pos.y);
+
+                if (points.length < 2) {
+                    points.push([x, y]);
+                    setStatus(`Added point ${points.length}/2 for Zebra crossing`);
+
+                    // Clear previous points if adding first point and keep background
+                    if (points.length === 1) {
+                        layer.destroyChildren();
+                        if (backgroundImage) {
+                            layer.add(backgroundImage);
+                        }
+                    }
+
+                    const point = new Konva.Circle({
+                        x: x,
+                        y: y,
+                        radius: 5,
+                        fill: 'blue',
+                    });
+                    layer.add(point);
+
+                    if (points.length === 2) {
+                        const line = new Konva.Line({
+                            points: points.flat(),
+                            stroke: 'blue',
+                            strokeWidth: 2,
+                        });
+                        layer.add(line);
+                        setStatus("Zebra crossing complete. Click 'Save' to confirm or 'Clear' to redraw.");
+                        document.getElementById('save-regions').disabled = false;
+                    }
+
+                    layer.draw();
+                    updateDebugInfo();
+                }
+            });
+        });
+    </script>
+</body>
+</html>

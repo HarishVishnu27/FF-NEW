@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Zebra Crossing Analytics</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.2.1/build/global/luxon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.2.0/dist/chartjs-adapter-luxon.min.js"></script>
+    <style>
+        .stats-card {
+            border-radius: 12px;
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .stats-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2);
+        }
+        .card-header {
+            background: linear-gradient(120deg, #667eea, #764ba2);
+            padding: 1rem;
+            color: white;
+            font-weight: bold;
+            border-radius: 12px 12px 0 0;
+        }
+        .card-body {
+            padding: 1.5rem;
+        }
+        .vehicle-icon {
+            font-size: 1.2rem;
+            margin-right: 0.5rem;
+        }
+        .gradient-btn {
+            background: linear-gradient(120deg, #4f46e5, #7e22ce);
+            transition: all 0.3s ease;
+        }
+        .gradient-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(79, 70, 229, 0.3);
+        }
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .badge-car {
+            background-color: #10B981;
+            color: white;
+        }
+        .badge-truck {
+            background-color: #F59E0B;
+            color: white;
+        }
+        .badge-bus {
+            background-color: #3B82F6;
+            color: white;
+        }
+        .badge-motorcycle {
+            background-color: #EC4899;
+            color: white;
+        }
+        .badge-bicycle {
+            background-color: #8B5CF6;
+            color: white;
+        }
+        .filter-vehicle-count {
+            font-size: 3rem;
+            color: #4f46e5;
+            font-weight: 800;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <header class="bg-gray-800 text-white p-4 shadow-lg">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="flex items-center">
+                <div class="mr-3">
+                    <i class="fas fa-chart-line text-2xl text-blue-400"></i>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-bold">Zebra Crossing Analytics</h1>
+                    <div class="flex items-center mt-1 text-sm text-gray-300">
+                        <span>Data insights and trends for vehicle crossings</span>
+                    </div>
+                </div>
+            </div>
+            <nav class="hidden md:flex space-x-6 items-center">
+                <a href="{{ url_for('index') }}" class="text-white hover:text-gray-300 flex items-center">
+                    <i class="fas fa-home mr-1"></i> Home
+                </a>
+                <a href="{{ url_for('admin_panel') }}" class="text-white hover:text-gray-300 flex items-center">
+                    <i class="fas fa-cog mr-1"></i> Admin Panel
+                </a>
+                <a href="{{ url_for('zebra_crossing_analytics') }}" class="text-white hover:text-gray-300 underline flex items-center">
+                    <i class="fas fa-chart-bar mr-1"></i> Analytics
+                </a>
+                <a href="{{ url_for('logout') }}" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded flex items-center">
+                    <i class="fas fa-sign-out-alt mr-1"></i> Logout
+                </a>
+            </nav>
+            <button id="mobile-menu-button" class="md:hidden text-white">
+                <i class="fas fa-bars text-xl"></i>
+            </button>
+        </div>
+        <div id="mobile-menu" class="hidden md:hidden mt-4 pt-4 border-t border-gray-700">
+            <nav class="flex flex-col space-y-3">
+                <a href="{{ url_for('index') }}" class="text-white hover:text-gray-300 flex items-center">
+                    <i class="fas fa-home mr-1"></i> Home
+                </a>
+                <a href="{{ url_for('admin_panel') }}" class="text-white hover:text-gray-300 flex items-center">
+                    <i class="fas fa-cog mr-1"></i> Admin Panel
+                </a>
+                <a href="{{ url_for('zebra_crossing_analytics') }}" class="text-white hover:text-gray-300 underline flex items-center">
+                    <i class="fas fa-chart-bar mr-1"></i> Analytics
+                </a>
+                <a href="{{ url_for('logout') }}" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded text-center">
+                    <i class="fas fa-sign-out-alt mr-1"></i> Logout
+                </a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container mx-auto py-8 px-4">
+        <!-- FILTER TAB GOES TO TOP -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8" id="filter-section">
+            <h2 class="text-xl font-bold mb-4 flex items-center">
+                <i class="fas fa-filter mr-2 text-indigo-600"></i>
+                Filter Data
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Camera</label>
+                    <select id="camera-select" class="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3">
+                        <option value="consolidated">Consolidated</option>
+                        <option value="all">All Cameras (show each camera)</option>
+                        {% for cam_id in range(1, 5) %}
+                        <option value="{{ cam_id }}">Camera {{ cam_id }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Preset</label>
+                    <select id="preset-select" class="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3">
+                        <option value="today">Today</option>
+                        <option value="yesterday">Yesterday</option>
+                        <option value="last24">Last 24 Hours</option>
+                        <option value="lastweek">Last 7 Days</option>
+                        <option value="lastmonth">Last 30 Days</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                </div>
+                <div id="custom-date-range" class="hidden">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Custom Range</label>
+                    <div class="flex gap-2">
+                        <input type="date" id="start-date" class="w-1/2 border border-gray-300 rounded-md shadow-sm py-2 px-3" />
+                        <input type="date" id="end-date" class="w-1/2 border border-gray-300 rounded-md shadow-sm py-2 px-3" />
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Vehicle Type</label>
+                    <select id="vehicle-type-filter" class="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3">
+                        <option value="">All Types</option>
+                        <option value="car">Cars</option>
+                        <option value="truck">Trucks</option>
+                        <option value="bus">Buses</option>
+                        <option value="motorcycle">Motorcycles</option>
+                        <option value="bicycle">Bicycles</option>
+                    </select>
+                </div>
+                <div>
+                    <button id="apply-filters" class="gradient-btn text-white font-bold py-2 px-4 rounded-md w-full flex items-center justify-center">
+                        <i class="fas fa-chart-bar mr-2"></i>
+                        Apply Filters
+                    </button>
+                </div>
+                <div>
+                    <button id="download-data" class="gradient-btn text-white font-bold py-2 px-4 rounded-md w-full flex items-center justify-center">
+                        <i class="fas fa-download mr-2"></i>
+                        Export Data
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SUMMARY CUBES: Only the filtered one(s) will show -->
+        <div id="cubes-section" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+            <!-- Camera 1 Cube -->
+            <div id="cube-cam-1" class="stats-card bg-white" style="display:none">
+                <div class="card-header flex items-center">
+                    <i class="fas fa-video mr-2"></i>
+                    <span>Camera 1 Summary</span>
+                </div>
+                <div class="card-body">
+                    <div class="flex justify-between items-center mb-4">
+                        <div>
+                            <div class="text-sm text-gray-500">Total Vehicles</div>
+                            <div class="text-3xl font-bold text-indigo-600" id="count-cam-1">-</div>
+                        </div>
+                        <div class="bg-indigo-100 p-3 rounded-full">
+                            <i class="fas fa-car-side text-2xl text-indigo-600"></i>
+                        </div>
+                    </div>
+                    <div class="text-xs text-gray-400 mb-2" id="since-cam-1"></div>
+                    <div class="grid grid-cols-2 gap-4 mb-4" id="breakdown-cam-1"></div>
+                    <div class="border-t pt-4">
+                        <div class="flex flex-wrap gap-2" id="type-breakdown-cam-1"></div>
+                    </div>
+                </div>
+            </div>
+            <!-- Camera 2 Cube -->
+            <div id="cube-cam-2" class="stats-card bg-white" style="display:none">
+                <div class="card-header flex items-center">
+                    <i class="fas fa-video mr-2"></i>
+                    <span>Camera 2 Summary</span>
+                </div>
+                <div class="card-body">
+                    <div class="flex justify-between items-center mb-4">
+                        <div>
+                            <div class="text-sm text-gray-500">Total Vehicles</div>
+                            <div class="text-3xl font-bold text-indigo-600" id="count-cam-2">-</div>
+                        </div>
+                        <div class="bg-indigo-100 p-3 rounded-full">
+                            <i class="fas fa-car-side text-2xl text-indigo-600"></i>
+                        </div>
+                    </div>
+                    <div class="text-xs text-gray-400 mb-2" id="since-cam-2"></div>
+                    <div class="grid grid-cols-2 gap-4 mb-4" id="breakdown-cam-2"></div>
+                    <div class="border-t pt-4">
+                        <div class="flex flex-wrap gap-2" id="type-breakdown-cam-2"></div>
+                    </div>
+                </div>
+            </div>
+            <!-- Camera 3 Cube -->
+            <div id="cube-cam-3" class="stats-card bg-white" style="display:none">
+                <div class="card-header flex items-center">
+                    <i class="fas fa-video mr-2"></i>
+                    <span>Camera 3 Summary</span>
+                </div>
+                <div class="card-body">
+                    <div class="flex justify-between items-center mb-4">
+                        <div>
+                            <div class="text-sm text-gray-500">Total Vehicles</div>
+                            <div class="text-3xl font-bold text-indigo-600" id="count-cam-3">-</div>
+                        </div>
+                        <div class="bg-indigo-100 p-3 rounded-full">
+                            <i class="fas fa-car-side text-2xl text-indigo-600"></i>
+                        </div>
+                    </div>
+                    <div class="text-xs text-gray-400 mb-2" id="since-cam-3"></div>
+                    <div class="grid grid-cols-2 gap-4 mb-4" id="breakdown-cam-3"></div>
+                    <div class="border-t pt-4">
+                        <div class="flex flex-wrap gap-2" id="type-breakdown-cam-3"></div>
+                    </div>
+                </div>
+            </div>
+            <!-- Camera 4 Cube -->
+            <div id="cube-cam-4" class="stats-card bg-white" style="display:none">
+                <div class="card-header flex items-center">
+                    <i class="fas fa-video mr-2"></i>
+                    <span>Camera 4 Summary</span>
+                </div>
+                <div class="card-body">
+                    <div class="flex justify-between items-center mb-4">
+                        <div>
+                            <div class="text-sm text-gray-500">Total Vehicles</div>
+                            <div class="text-3xl font-bold text-indigo-600" id="count-cam-4">-</div>
+                        </div>
+                        <div class="bg-indigo-100 p-3 rounded-full">
+                            <i class="fas fa-car-side text-2xl text-indigo-600"></i>
+                        </div>
+                    </div>
+                    <div class="text-xs text-gray-400 mb-2" id="since-cam-4"></div>
+                    <div class="grid grid-cols-2 gap-4 mb-4" id="breakdown-cam-4"></div>
+                    <div class="border-t pt-4">
+                        <div class="flex flex-wrap gap-2" id="type-breakdown-cam-4"></div>
+                    </div>
+                </div>
+            </div>
+            <!-- Consolidated Cube (shows sum of all) -->
+            <div id="cube-consolidated" class="stats-card bg-white" style="display:none">
+                <div class="card-header flex items-center bg-gradient-to-r from-green-400 to-blue-500">
+                    <i class="fas fa-layer-group mr-2"></i>
+                    <span>Consolidated</span>
+                </div>
+                <div class="card-body">
+                    <div class="flex justify-between items-center mb-4">
+                        <div>
+                            <div class="text-sm text-gray-500">Total Vehicles</div>
+                            <div class="text-3xl font-bold text-indigo-600" id="consolidated-total-count">-</div>
+                        </div>
+                        <div class="bg-indigo-100 p-3 rounded-full">
+                            <i class="fas fa-car-side text-2xl text-indigo-600"></i>
+                        </div>
+                    </div>
+                    <div class="text-xs text-gray-400 mb-2" id="consolidated-since"></div>
+                    <div class="grid grid-cols-2 gap-4 mb-4" id="consolidated-common-breakdown"></div>
+                    <div class="border-t pt-4">
+                        <div class="flex flex-wrap gap-2" id="consolidated-type-breakdown"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Camera Sections (one at a time) -->
+        <div id="camera-section-analytics">
+            <!-- Content dynamically loaded by JS -->
+        </div>
+    </main>
+    <footer class="bg-gray-800 text-white py-6 mt-8">
+        <div class="container mx-auto px-4">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="mb-4 md:mb-0">
+                    <p>&copy; 2025 Zebra Crossing Vehicle Analytics. All rights reserved.</p>
+                </div>
+                <div class="flex space-x-4">
+                    <button id="refresh-data" class="bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-md flex items-center">
+                        <i class="fas fa-sync-alt mr-2"></i>
+                        Refresh Data
+                    </button>
+                </div>
+            </div>
+        </div>
+    </footer>
+    <script>
+        function updateCustomDateFields() {
+            const preset = document.getElementById('preset-select').value;
+            document.getElementById('custom-date-range').classList.toggle('hidden', preset !== 'custom');
+        }
+
+        function updateCubeVisibility() {
+            // Hide all cubes
+            for (let i = 1; i <= 4; i++) {
+                document.getElementById(`cube-cam-${i}`).style.display = "none";
+            }
+            document.getElementById('cube-consolidated').style.display = "none";
+            // Show relevant cubes
+            const camSelect = document.getElementById('camera-select');
+            const selected = camSelect.value;
+            if (selected === "consolidated") {
+                document.getElementById('cube-consolidated').style.display = "";
+            } else if (selected === "all") {
+                for (let i = 1; i <= 4; i++) {
+                    document.getElementById(`cube-cam-${i}`).style.display = "";
+                }
+            } else {
+                const camNum = parseInt(selected);
+                if (camNum >= 1 && camNum <= 4) {
+                    document.getElementById(`cube-cam-${camNum}`).style.display = "";
+                }
+            }
+        }
+
+        // Populate summary cube(s) with fetched data
+        function populateCube(cam, stats) {
+            document.getElementById(`count-cam-${cam}`).textContent = stats.total_count ?? "-";
+            document.getElementById(`since-cam-${cam}`).textContent = stats.since ? `Since: ${stats.since}` : "";
+            let breakdown = "";
+            let typeBreakdown = "";
+            let maxType = "";
+            let maxCount = 0;
+            if (stats.vehicle_counts) {
+                for (let [k, v] of Object.entries(stats.vehicle_counts)) {
+                    typeBreakdown += `<span class="badge badge-${k}">${k}: ${v}</span>`;
+                    if (v > maxCount) {
+                        maxType = k;
+                        maxCount = v;
+                    }
+                }
+            }
+            breakdown = `
+                <div>
+                    <div class="text-sm text-gray-500">Most Common</div>
+                    <div class="font-medium capitalize flex items-center">
+                        <i class="fas fa-car text-green-500 mr-1"></i>${maxType}
+                    </div>
+                </div>
+                <div>
+                    <div class="text-sm text-gray-500">Total</div>
+                    <div class="font-medium">${stats.total_count ?? "-"}</div>
+                </div>
+            `;
+            document.getElementById(`breakdown-cam-${cam}`).innerHTML = breakdown;
+            document.getElementById(`type-breakdown-cam-${cam}`).innerHTML = typeBreakdown;
+        }
+        function populateConsolidatedCube(stats) {
+            document.getElementById('consolidated-total-count').textContent = stats.total_count ?? "-";
+            document.getElementById('consolidated-since').textContent = stats.since ? `Since: ${stats.since}` : "";
+            let breakdown = "";
+            let typeBreakdown = "";
+            let maxType = "";
+            let maxCount = 0;
+            if (stats.vehicle_counts) {
+                for (let [k, v] of Object.entries(stats.vehicle_counts)) {
+                    typeBreakdown += `<span class="badge badge-${k}">${k}: ${v}</span>`;
+                    if (v > maxCount) {
+                        maxType = k;
+                        maxCount = v;
+                    }
+                }
+            }
+            breakdown = `
+                <div>
+                    <div class="text-sm text-gray-500">Most Common</div>
+                    <div class="font-medium capitalize flex items-center">
+                        <i class="fas fa-car text-green-500 mr-1"></i>${maxType}
+                    </div>
+                </div>
+                <div>
+                    <div class="text-sm text-gray-500">Total</div>
+                    <div class="font-medium">${stats.total_count ?? "-"}</div>
+                </div>
+            `;
+            document.getElementById('consolidated-common-breakdown').innerHTML = breakdown;
+            document.getElementById('consolidated-type-breakdown').innerHTML = typeBreakdown;
+        }
+
+        // Analytics Preset Filtering + AJAX
+        let currentCamera = "consolidated";
+        let currentPreset = 'today';
+        let currentVehicleType = '';
+        let currentStartDate = '';
+        let currentEndDate = '';
+
+        function loadAnalyticsData() {
+            let params = `preset=${currentPreset}`;
+            if (currentCamera !== "consolidated" && currentCamera !== "all") {
+                params += `&cam_id=${currentCamera}`;
+            }
+            if (currentPreset === "custom") {
+                if (currentStartDate && currentEndDate) {
+                    params += `&start_date=${currentStartDate}&end_date=${currentEndDate}`;
+                }
+            }
+            if (currentVehicleType) {
+                params += `&vehicle_type=${currentVehicleType}`;
+            }
+
+            if (currentCamera === "consolidated") {
+                fetch(`/api/analytics_data?cam_id=consolidated&${params}`)
+                    .then(res => res.json())
+                    .then(resp => {
+                        updateCubeVisibility();
+                        populateConsolidatedCube(resp.stats);
+                    });
+            } else if (currentCamera === "all") {
+                // Show all four cubes: one request per cam
+                for (let i = 1; i <= 4; i++) {
+                    fetch(`/api/analytics_data?cam_id=${i}&${params}`)
+                        .then(res => res.json())
+                        .then(resp => {
+                            populateCube(i, resp.stats);
+                        });
+                }
+                updateCubeVisibility();
+            } else {
+                fetch(`/api/analytics_data?cam_id=${currentCamera}&${params}`)
+                    .then(res => res.json())
+                    .then(resp => {
+                        updateCubeVisibility();
+                        populateCube(currentCamera, resp.stats);
+                    });
+            }
+        }
+
+        // Initial event listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            updateCustomDateFields();
+            updateCubeVisibility();
+            loadAnalyticsData();
+
+            document.getElementById('preset-select').addEventListener('change', function() {
+                currentPreset = this.value;
+                updateCustomDateFields();
+            });
+            document.getElementById('camera-select').addEventListener('change', function() {
+                currentCamera = this.value;
+                updateCubeVisibility();
+            });
+            document.getElementById('vehicle-type-filter').addEventListener('change', function() {
+                currentVehicleType = this.value;
+            });
+            document.getElementById('apply-filters').addEventListener('click', function() {
+                if (currentPreset === "custom") {
+                    currentStartDate = document.getElementById('start-date').value;
+                    currentEndDate = document.getElementById('end-date').value;
+                    if (!currentStartDate || !currentEndDate) {
+                        alert("Please select custom start and end date.");
+                        return;
+                    }
+                }
+                loadAnalyticsData();
+            });
+            document.getElementById('download-data').addEventListener('click', function() {
+                let camParam = currentCamera === "consolidated" ? "cam_id=consolidated&" : (currentCamera === "all" ? "" : `cam_id=${currentCamera}&`);
+                let params = `${camParam}preset=${currentPreset}`;
+                if (currentPreset === "custom") {
+                    params += `&start_date=${currentStartDate}&end_date=${currentEndDate}`;
+                }
+                if (currentVehicleType) {
+                    params += `&vehicle_type=${currentVehicleType}`;
+                }
+                window.location.href = "/download_zebra_data?" + params;
+            });
+            document.getElementById('refresh-data').addEventListener('click', function() {
+                window.location.reload();
+            });
+            document.getElementById('mobile-menu-button').addEventListener('click', function() {
+                const menu = document.getElementById('mobile-menu');
+                menu.classList.toggle('hidden');
+            });
+        });
+    </script>
+</body>
+</html>
